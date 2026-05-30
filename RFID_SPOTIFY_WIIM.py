@@ -260,6 +260,16 @@ def read_rfid_card(device_path):
         ecodes.KEY_7: "7",
         ecodes.KEY_8: "8",
         ecodes.KEY_9: "9",
+        ecodes.KEY_KP0: "0",
+        ecodes.KEY_KP1: "1",
+        ecodes.KEY_KP2: "2",
+        ecodes.KEY_KP3: "3",
+        ecodes.KEY_KP4: "4",
+        ecodes.KEY_KP5: "5",
+        ecodes.KEY_KP6: "6",
+        ecodes.KEY_KP7: "7",
+        ecodes.KEY_KP8: "8",
+        ecodes.KEY_KP9: "9",
     }
 
     card_id = ""
@@ -287,7 +297,7 @@ def read_rfid_card(device_path):
             card_id += key_map[key_code]
             continue
 
-        if key_code == ecodes.KEY_ENTER:
+        if key_code in (ecodes.KEY_ENTER, ecodes.KEY_KPENTER):
             if card_id:
                 print(f"Card ID: {card_id}")
                 return card_id
@@ -315,9 +325,13 @@ def main():
         return
 
     rfid_device_path = config["rfid"].get("device_path")
-    if not rfid_device_path:
-        print("Missing rfid.device_path in config.json")
-        print("Example: /dev/input/by-id/usb-YOUR_RFID_READER-event-kbd")
+    if (
+        not rfid_device_path
+        or "YOUR_RFID_READER" in rfid_device_path
+    ):
+        print("Missing or placeholder rfid.device_path in config.json")
+        print("Run: ls -l /dev/input/by-id/")
+        print("Then set device_path to your RFID reader's event-kbd path.")
         sys.exit(1)
 
     mapping = load_mapping(mapping_file)

@@ -10,7 +10,7 @@ Must have RFID card reader
 Must have programmable RFID cards
 
 Install Python dependencies:
-- `pip install spotipy evdev`
+- `pip install -r requirements.txt`
 
 Copy config.example.json to config.json and fill in your local values.
 
@@ -41,7 +41,7 @@ Your config.json file should contain:
 To run the player automatically on boot without an attached keyboard session:
 
 1. Install dependencies:
-   `pip install spotipy evdev`
+    `pip install -r requirements.txt`
 2. Put the project in a stable location such as `/home/pi/RFID_Spotify`.
 3. Set `config.json`, especially `rfid.device_path`, to your RFID reader event device.
 4. Create `/etc/systemd/system/rfid-spotify.service` with contents like:
