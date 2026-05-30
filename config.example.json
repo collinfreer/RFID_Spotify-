@@ -12,6 +12,7 @@
         "initial_volume": 50
     },
     "rfid": {
-        "mapping_file": "rfid_spotify_map.json"
+        "mapping_file": "rfid_spotify_map.json",
+        "device_path": "/dev/input/by-id/usb-YOUR_RFID_READER-event-kbd"
     }
 }

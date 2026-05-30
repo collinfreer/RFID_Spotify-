@@ -4,9 +4,6 @@ import os
 import re
 import sys
 import time
-import select
-import termios
-import tty
 
 try:
     import spotipy
@@ -33,7 +30,8 @@ DEFAULT_CONFIG = {
         "initial_volume": 50
     },
     "rfid": {
-        "mapping_file": "rfid_spotify_map.json"
+        "mapping_file": "rfid_spotify_map.json",
+        "device_path": "/dev/input/by-id/usb-YOUR_RFID_READER-event-kbd"
     }
 }
 
@@ -239,40 +237,60 @@ def play_spotify_playlist_on_wiim(playlist_value, sp, config):
         return False
 
 
-def read_rfid_card():
-    """Read RFID card ID from a USB keyboard-wedge RFID reader."""
-    card_id = ""
-    print("Scan an RFID card...")
+def read_rfid_card(device_path):
+    """
+    Read RFID card ID directly from a USB RFID reader input device.
 
-    old_settings = termios.tcgetattr(sys.stdin)
-
+    This works under systemd because it does not depend on terminal stdin.
+    """
     try:
-        tty.setraw(sys.stdin.fileno())
+        from evdev import InputDevice, categorize, ecodes
+    except ImportError:
+        print("Please install evdev first: pip install evdev")
+        sys.exit(1)
 
-        while True:
-            if select.select([sys.stdin], [], [], 0.1)[0]:
-                char = sys.stdin.read(1)
+    key_map = {
+        ecodes.KEY_0: "0",
+        ecodes.KEY_1: "1",
+        ecodes.KEY_2: "2",
+        ecodes.KEY_3: "3",
+        ecodes.KEY_4: "4",
+        ecodes.KEY_5: "5",
+        ecodes.KEY_6: "6",
+        ecodes.KEY_7: "7",
+        ecodes.KEY_8: "8",
+        ecodes.KEY_9: "9",
+    }
 
-                if char in ["\r", "\n"]:
-                    if card_id:
-                        print(f"\nCard ID: {card_id}")
-                        return card_id
+    card_id = ""
 
-                elif char.isdigit():
-                    card_id += char
-                    sys.stdout.write(char)
-                    sys.stdout.flush()
+    print(f"Listening for RFID scans on {device_path}...")
+    try:
+        device = InputDevice(device_path)
+    except OSError as exc:
+        print(f"Could not open RFID device {device_path}: {exc}")
+        sys.exit(1)
 
-                elif char == "\x03":
-                    raise KeyboardInterrupt
+    for event in device.read_loop():
+        if event.type != ecodes.EV_KEY:
+            continue
 
-                elif not char.isspace():
-                    card_id = ""
-                    print(f"\nIgnoring invalid character: {repr(char)}")
-                    print("Scan an RFID card...")
+        key_event = categorize(event)
 
-    finally:
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+        # Only handle key press events, not key release events.
+        if key_event.keystate != key_event.key_down:
+            continue
+
+        key_code = key_event.scancode
+
+        if key_code in key_map:
+            card_id += key_map[key_code]
+            continue
+
+        if key_code == ecodes.KEY_ENTER:
+            if card_id:
+                print(f"Card ID: {card_id}")
+                return card_id
 
 
 def main():
@@ -296,6 +314,12 @@ def main():
         play_spotify_playlist_on_wiim(args.test_playlist, sp, config)
         return
 
+    rfid_device_path = config["rfid"].get("device_path")
+    if not rfid_device_path:
+        print("Missing rfid.device_path in config.json")
+        print("Example: /dev/input/by-id/usb-YOUR_RFID_READER-event-kbd")
+        sys.exit(1)
+
     mapping = load_mapping(mapping_file)
 
     if not mapping:
@@ -308,7 +332,7 @@ def main():
 
     try:
         while True:
-            card_id = read_rfid_card()
+            card_id = read_rfid_card(rfid_device_path)
 
             playlist_value = mapping.get(card_id)
 
