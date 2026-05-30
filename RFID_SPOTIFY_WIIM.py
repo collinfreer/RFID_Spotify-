@@ -281,15 +281,26 @@ def read_rfid_card(device_path):
         print(f"Could not open RFID device {device_path}: {exc}")
         sys.exit(1)
 
-    for event in device.read_loop():
+    while True:
+        event = device.read_one()
+
+        if event is None:
+            if card_id:
+                time.sleep(0.25)
+                event = device.read_one()
+                if event is None:
+                    print(f"Card ID: {card_id}")
+                    return card_id
+            time.sleep(0.01)
+            continue
+
         if event.type != ecodes.EV_KEY:
             continue
 
         key_event = categorize(event)
 
-        # Only handle key press events, not key release events.
         if key_event.keystate != key_event.key_down:
-            continue
+           continue
 
         key_code = key_event.scancode
 
@@ -299,8 +310,8 @@ def read_rfid_card(device_path):
 
         if key_code in (ecodes.KEY_ENTER, ecodes.KEY_KPENTER):
             if card_id:
-                print(f"Card ID: {card_id}")
-                return card_id
+               print(f"Card ID: {card_id}")
+               return card_id
 
 
 def main():
@@ -347,8 +358,13 @@ def main():
     try:
         while True:
             card_id = read_rfid_card(rfid_device_path)
+            card_id = card_id.strip()
+
+            print(f"DEBUG scanned card_id: {repr(card_id)}")
+            print(f"DEBUG mapping keys: {[repr(k) for k in mapping.keys()]}")
 
             playlist_value = mapping.get(card_id)
+            print(f"DEBUG playlist_value: {repr(playlist_value)}")
 
             if playlist_value:
                 print(f"Found playlist for card {card_id}")
