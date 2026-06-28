@@ -27,18 +27,20 @@ SCREEN_H = 480
 FPS = 30
 POLL_INTERVAL = 3
 
-BLACK      = (0, 0, 0)
-WHITE      = (255, 255, 255)
-GRAY       = (50, 50, 50)
-LIGHT_GRAY = (180, 180, 180)
+BLACK       = (0, 0, 0)
+WHITE       = (255, 255, 255)
+GRAY        = (50, 50, 50)
+LIGHT_GRAY  = (180, 180, 180)
 SPOTIFY_GREEN = (30, 215, 96)
-BTN_PLAY   = (30, 150, 60)
-BTN_STOP   = (160, 30, 30)
+BTN_PLAY    = (30, 150, 60)
+BTN_STOP    = (160, 30, 30)
 BTN_DEFAULT = (60, 60, 60)
+
 
 def load_config():
     with open(CONFIG_FILE, "r") as f:
         return json.load(f)
+
 
 def create_spotify_client(config):
     sc = config["spotify"]
@@ -53,6 +55,7 @@ def create_spotify_client(config):
     )
     return spotipy.Spotify(auth_manager=auth_manager)
 
+
 def download_image(url, size=(300, 300)):
     try:
         with urllib.request.urlopen(url, timeout=5) as resp:
@@ -62,6 +65,7 @@ def download_image(url, size=(300, 300)):
     except Exception as e:
         print(f"Album art download failed: {e}")
         return None
+
 
 class SpotifyState:
     def __init__(self, sp):
@@ -87,11 +91,11 @@ class SpotifyState:
                     self.is_playing = False
                 return
             item = playback["item"]
-            track_id   = item["id"]
-            is_playing = playback["is_playing"]
-            track_name = item["name"]
+            track_id    = item["id"]
+            is_playing  = playback["is_playing"]
+            track_name  = item["name"]
             artist_name = ", ".join(a["name"] for a in item["artists"])
-            images = item["album"]["images"]
+            images  = item["album"]["images"]
             art_url = images[1]["url"] if len(images) > 1 else images[0]["url"]
             with self.lock:
                 self.is_playing  = is_playing
@@ -141,11 +145,13 @@ class SpotifyState:
         except Exception as e:
             print(f"Previous track error: {e}")
 
+
 def draw_button(screen, font, label, rect, color=BTN_DEFAULT):
     pygame.draw.rect(screen, color, rect, border_radius=14)
     text = font.render(label, True, WHITE)
     text_rect = text.get_rect(center=(rect[0] + rect[2] // 2, rect[1] + rect[3] // 2))
     screen.blit(text, text_rect)
+
 
 def wrap_text(text, font, max_width):
     words = text.split()
@@ -163,10 +169,49 @@ def wrap_text(text, font, max_width):
         lines.append(current)
     return lines
 
+
+class Screensaver:
+    def __init__(self, image_path):
+        if os.path.exists(image_path):
+            raw = pygame.image.load(image_path).convert_alpha()
+            scale = min(200 / raw.get_width(), 200 / raw.get_height())
+            new_w = int(raw.get_width() * scale)
+            new_h = int(raw.get_height() * scale)
+            self.surf = pygame.transform.scale(raw, (new_w, new_h))
+        else:
+            font = pygame.font.SysFont("sans", 48, bold=True)
+            self.surf = font.render("Spotify", True, SPOTIFY_GREEN)
+        self.w, self.h = self.surf.get_size()
+        self.x = float(SCREEN_W // 2 - self.w // 2)
+        self.y = float(SCREEN_H // 2 - self.h // 2)
+        self.vx = 2.0
+        self.vy = 1.5
+
+    def update(self):
+        self.x += self.vx
+        self.y += self.vy
+        if self.x <= 0 or self.x + self.w >= SCREEN_W:
+            self.vx *= -1
+            self.x = max(0.0, min(self.x, float(SCREEN_W - self.w)))
+        if self.y <= 0 or self.y + self.h >= SCREEN_H:
+            self.vy *= -1
+            self.y = max(0.0, min(self.y, float(SCREEN_H - self.h)))
+
+    def draw(self, screen):
+        screen.fill(BLACK)
+        screen.blit(self.surf, (int(self.x), int(self.y)))
+
+
 def main():
     config = load_config()
     sp     = create_spotify_client(config)
     state  = SpotifyState(sp)
+
+    display_config    = config.get("display", {})
+    screensaver_image = display_config.get("screensaver_image", "screensaver.png")
+    screensaver_delay = display_config.get("screensaver_delay_seconds", 300)
+
+    screensaver_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), screensaver_image)
 
     pygame.init()
     screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.FULLSCREEN)
@@ -178,9 +223,11 @@ def main():
     font_status = pygame.font.SysFont("sans", 20)
     font_btn    = pygame.font.SysFont("sans", 22, bold=True)
 
-    clock = pygame.time.Clock()
+    clock       = pygame.time.Clock()
+    screensaver = Screensaver(screensaver_path)
+    nothing_playing_since = None
 
-    ART_SIZE   = 300
+    ART_SIZE     = 300
     ART_X, ART_Y = 30, 80
 
     BTN_W, BTN_H = 155, 60
@@ -193,10 +240,10 @@ def main():
         x = BTN_START_X + index * (BTN_W + BTN_GAP)
         return pygame.Rect(x, BTN_Y, BTN_W, BTN_H)
 
-    rect_prev  = btn_rect(0)
-    rect_play  = btn_rect(1)
-    rect_stop  = btn_rect(2)
-    rect_next  = btn_rect(3)
+    rect_prev = btn_rect(0)
+    rect_play = btn_rect(1)
+    rect_stop = btn_rect(2)
+    rect_next = btn_rect(3)
 
     INFO_X     = ART_X + ART_SIZE + 30
     INFO_WIDTH = SCREEN_W - INFO_X - 20
@@ -221,13 +268,25 @@ def main():
                 elif rect_next.collidepoint(pos):
                     state.next_track()
 
-        screen.fill(BLACK)
-
         with state.lock:
             album_art   = state.album_art
             track_name  = state.track_name
             artist_name = state.artist_name
             is_playing  = state.is_playing
+
+        if track_name == "Nothing playing":
+            if nothing_playing_since is None:
+                nothing_playing_since = time.time()
+            elif time.time() - nothing_playing_since >= screensaver_delay:
+                screensaver.update()
+                screensaver.draw(screen)
+                pygame.display.flip()
+                clock.tick(FPS)
+                continue
+        else:
+            nothing_playing_since = None
+
+        screen.fill(BLACK)
 
         if album_art:
             screen.blit(album_art, (ART_X, ART_Y))
@@ -263,6 +322,7 @@ def main():
         clock.tick(FPS)
 
     pygame.quit()
+
 
 if __name__ == "__main__":
     main()
